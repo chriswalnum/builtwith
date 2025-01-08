@@ -106,13 +106,79 @@ def get_platform_signatures():
             ('meta', {'name': 'generator', 'content': re.compile('HubSpot', re.I)}),
             ('script', {'src': re.compile('hubspot', re.I)}),
         ],
-        'Scorpion CMS': [
-            ('meta', {'name': 'author', 'content': re.compile('Scorpion', re.I)}),
-            ('script', {'src': re.compile('scorpion', re.I)}),
-            ('link', {'href': re.compile('scorpion', re.I)}),
-            ('script', {'src': re.compile('\.scorp\.com', re.I)}),
-            ('div', {'class': re.compile('scorpion-', re.I)}),
-            ('img', {'src': re.compile('\.scorp\.com', re.I)}),
+        'Weebly': [
+            ('meta', {'name': 'generator', 'content': re.compile('Weebly', re.I)}),
+            ('script', {'src': re.compile('weebly', re.I)}),
+            ('div', {'class': re.compile('weebly-', re.I)}),
+        ],
+        'Duda': [
+            ('script', {'src': re.compile('multiscreensite', re.I)}),
+            ('script', {'src': re.compile('duda', re.I)}),
+            ('meta', {'name': 'generator', 'content': re.compile('Duda', re.I)}),
+        ],
+        'Webflow': [
+            ('html', {'data-wf-site': re.compile('.*')}),
+            ('script', {'src': re.compile('webflow.com', re.I)}),
+            ('meta', {'generator': 'Webflow'}),
+        ],
+        'Contentful': [
+            ('meta', {'name': 'generator', 'content': re.compile('contentful', re.I)}),
+            ('script', {'src': re.compile('contentful', re.I)}),
+        ],
+        'Sitefinity': [
+            ('meta', {'generator': re.compile('Sitefinity', re.I)}),
+            ('link', {'href': re.compile('Sitefinity', re.I)}),
+        ],
+        'Concrete CMS': [
+            ('meta', {'name': 'generator', 'content': re.compile('concrete5|concrete cms', re.I)}),
+            ('script', {'src': re.compile('concrete', re.I)}),
+        ],
+        'GoDaddy Website Builder': [
+            ('meta', {'generator': re.compile('GoDaddy', re.I)}),
+            ('script', {'src': re.compile('websitebuilder.godaddy.com', re.I)}),
+            ('img', {'src': re.compile('godaddy-website-builder', re.I)}),
+        ],
+        'Strikingly': [
+            ('meta', {'name': 'generator', 'content': re.compile('Strikingly', re.I)}),
+            ('script', {'src': re.compile('strikingly', re.I)}),
+        ],
+        'Jimdo': [
+            ('meta', {'name': 'generator', 'content': re.compile('Jimdo', re.I)}),
+            ('script', {'src': re.compile('jimdo', re.I)}),
+        ],
+        'Contao': [
+            ('meta', {'name': 'generator', 'content': re.compile('Contao', re.I)}),
+            ('script', {'src': re.compile('contao', re.I)}),
+        ],
+        'Acquia': [
+            ('script', {'src': re.compile('acquia', re.I)}),
+            ('meta', {'name': 'generator', 'content': re.compile('Acquia', re.I)}),
+        ],
+        'CloudCannon': [
+            ('meta', {'generator': re.compile('CloudCannon', re.I)}),
+            ('script', {'src': re.compile('cloudcannon', re.I)}),
+        ],
+        'MODX': [
+            ('meta', {'name': 'generator', 'content': re.compile('MODX', re.I)}),
+            ('script', {'src': re.compile('modx', re.I)}),
+        ],
+        'Brightspot': [
+            ('meta', {'name': 'generator', 'content': re.compile('Brightspot', re.I)}),
+            ('script', {'src': re.compile('brightspot', re.I)}),
+        ],
+        'Contentstack': [
+            ('meta', {'name': 'generator', 'content': re.compile('Contentstack', re.I)}),
+            ('script', {'src': re.compile('contentstack', re.I)}),
+        ],
+        'Salesforce Experience Cloud': [
+            ('meta', {'name': 'generator', 'content': re.compile('Salesforce', re.I)}),
+            ('script', {'src': re.compile('force.com|salesforce.com', re.I)}),
+            ('div', {'class': re.compile('salesforce-', re.I)}),
+        ],
+        'Netlify CMS': [
+            ('meta', {'name': 'generator', 'content': re.compile('Netlify', re.I)}),
+            ('script', {'src': re.compile('netlify-cms', re.I)}),
+            ('div', {'class': re.compile('nc-')}),
         ],
         'Shopify': [
             ('meta', {'name': 'shopify-checkout-api-token'}),
@@ -161,34 +227,93 @@ def get_platform_signatures():
         ]
     }
 
+def get_confidence_score(matches, total_checks):
+    """Calculate confidence score based on number of matching signatures."""
+    if total_checks == 0:
+        return 0
+    return (matches / total_checks) * 100
+
 def detect_platform(url):
-    """Detect the platform/framework used by a website."""
+    """Detect the platform/framework used by a website with confidence scores."""
     try:
         # Send request with common browser headers
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
         }
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
         response.raise_for_status()
         
         # Parse HTML
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Check response headers for platform hints
+        # Check response headers and cookies for platform hints
         server = response.headers.get('Server', '').lower()
         poweredBy = response.headers.get('X-Powered-By', '').lower()
+        cookies = response.cookies
         
-        # Initialize results
+        # Initialize results with confidence scores
         detected_platforms = []
         
         # Check signatures for each platform
         signatures = get_platform_signatures()
         for platform, checks in signatures.items():
+            matches = 0
+            total_checks = len(checks)
+            
             for tag, attrs in checks:
                 if soup.find(tag, attrs):
-                    if platform not in detected_platforms:
-                        detected_platforms.append(platform)
-                        break
+                    matches += 1
+            
+            # Calculate confidence score
+            if matches > 0:
+                confidence = get_confidence_score(matches, total_checks)
+                if confidence >= 30:  # Only include if confidence is at least 30%
+                    detected_platforms.append({
+                        'platform': platform,
+                        'confidence': round(confidence, 1),
+                        'matches': matches,
+                        'total_checks': total_checks
+                    })
+        
+        # Sort by confidence score
+        detected_platforms.sort(key=lambda x: x['confidence'], reverse=True)
+        
+        # Additional technology checks
+        if server:
+            detected_platforms.append({
+                'platform': f'Server: {server}',
+                'confidence': 100,
+                'matches': 1,
+                'total_checks': 1
+            })
+        
+        if poweredBy:
+            detected_platforms.append({
+                'platform': f'Powered By: {poweredBy}',
+                'confidence': 100,
+                'matches': 1,
+                'total_checks': 1
+            })
+            
+        return detected_platforms if detected_platforms else [{
+            'platform': 'Unable to determine platform',
+            'confidence': 0,
+            'matches': 0,
+            'total_checks': 1
+        }]
+    
+    except requests.exceptions.RequestException as e:
+        return [{
+            'platform': f'Error: {str(e)}',
+            'confidence': 0,
+            'matches': 0,
+            'total_checks': 1
+        }]
         
         # Check for custom-built indicators if no major platforms detected
         if not detected_platforms or (len(detected_platforms) == 1 and detected_platforms[0] in ['PHP', 'Apache', 'Nginx']):
@@ -210,7 +335,7 @@ def detect_platform(url):
     except requests.exceptions.RequestException as e:
         return [f'Error: {str(e)}']
 
-# Streamlit UI
+# Streamlit UI with enhanced visualization
 st.set_page_config(page_title='Website Platform Detector', layout='wide')
 
 st.title('Website Platform Detector')
@@ -230,14 +355,53 @@ if url:
         with st.spinner('Detecting platform...'):
             platforms = detect_platform(cleaned_url)
         
-        # Display results
+        # Display results with confidence scores
         st.subheader('Detected Platforms/Technologies:')
-        for platform in platforms:
-            st.write(f'- {platform}')
+        
+        # Create three columns for different confidence levels
+        high_conf, med_conf, low_conf = st.columns(3)
+        
+        with high_conf:
+            st.markdown("### High Confidence (70-100%)")
+            for platform in platforms:
+                if platform['confidence'] >= 70:
+                    st.success(f"{platform['platform']}: {platform['confidence']}%")
+                    st.caption(f"Matched {platform['matches']} of {platform['total_checks']} signatures")
+        
+        with med_conf:
+            st.markdown("### Medium Confidence (40-69%)")
+            for platform in platforms:
+                if 40 <= platform['confidence'] < 70:
+                    st.warning(f"{platform['platform']}: {platform['confidence']}%")
+                    st.caption(f"Matched {platform['matches']} of {platform['total_checks']} signatures")
+        
+        with low_conf:
+            st.markdown("### Low Confidence (< 40%)")
+            for platform in platforms:
+                if platform['confidence'] < 40:
+                    st.error(f"{platform['platform']}: {platform['confidence']}%")
+                    st.caption(f"Matched {platform['matches']} of {platform['total_checks']} signatures")
             
-        st.info('Note: Detection is based on common signatures and may not be 100% accurate.')
+        st.info("""
+        Note: Detection is based on signature matching and may not be 100% accurate. 
+        - High confidence results match multiple platform signatures
+        - Medium confidence results match some but not all signatures
+        - Low confidence results match only a few signatures
+        """)
     else:
         st.error('Please enter a valid URL')
+
+# Add footer with information
+st.markdown('---')
+st.markdown("""
+This tool identifies web platforms by analyzing:
+- HTML structure and meta tags
+- JavaScript and CSS resources
+- Server headers and technologies
+- Platform-specific signatures
+- Framework patterns
+""")
+
 
 # Add footer with information
 st.markdown('---')
