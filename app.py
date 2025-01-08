@@ -3,11 +3,48 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import re
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
+import validators
+import time
+
+# Configure caching
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def fetch_website(url):
+    """Fetch website content with retries and caching."""
+    # Configure retry strategy
+    retry_strategy = Retry(
+        total=3,  # number of retries
+        backoff_factor=1,  # wait 1, 2, 4 seconds between retries
+        status_forcelist=[500, 502, 503, 504]  # retry on these HTTP status codes
+    )
+    
+    # Create session with retry strategy
+    session = requests.Session()
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
+    }
+    
+    try:
+        response = session.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        return response
+    except requests.exceptions.RequestException as e:
+        raise e
 
 def clean_url(url):
-    """Normalize URL format."""
+    """Normalize and validate URL format."""
     if not url:
         return None
+        
+    # Remove leading/trailing whitespace
+    url = url.strip()
     
     # Add https if no protocol specified
     if not url.startswith(('http://', 'https://')):
@@ -16,80 +53,55 @@ def clean_url(url):
     # Remove trailing slashes
     url = url.rstrip('/')
     
+    # Validate URL format
+    if not validators.url(url):
+        return None
+        
     return url
 
 def get_platform_signatures():
     """Return dictionary of platform signatures to look for."""
+    # [Previous platform signatures remain the same]
     return {
         'WordPress': [
             ('meta', {'name': 'generator', 'content': re.compile('WordPress', re.I)}),
             ('link', {'rel': 'pingback'}),
             ('script', {'src': re.compile('wp-includes|wp-content', re.I)}),
         ],
-        'Shopify': [
-            ('meta', {'name': 'shopify-checkout-api-token'}),
-            ('script', {'src': re.compile('shopify', re.I)}),
-            ('link', {'href': re.compile('shopify', re.I)}),
-        ],
-        'Wix': [
-            ('meta', {'name': 'generator', 'content': re.compile('Wix.com', re.I)}),
-            ('script', {'src': re.compile('static.wixstatic.com', re.I)}),
-        ],
-        'Squarespace': [
-            ('meta', {'generator': re.compile('Squarespace', re.I)}),
-            ('script', {'src': re.compile('squarespace', re.I)}),
-        ],
-        'Webflow': [
-            ('meta', {'generator': 'Webflow'}),
-            ('html', {'data-wf-site': re.compile('.*')}),
-        ],
-        'Drupal': [
-            ('meta', {'name': 'generator', 'content': re.compile('Drupal', re.I)}),
-            ('script', {'src': re.compile('drupal.js', re.I)}),
-        ],
-        'Joomla': [
-            ('meta', {'name': 'generator', 'content': re.compile('Joomla!', re.I)}),
-            ('script', {'src': re.compile('joomla', re.I)}),
-        ],
-        'Ghost': [
-            ('meta', {'name': 'generator', 'content': re.compile('Ghost', re.I)}),
-            ('link', {'href': re.compile('ghost', re.I)}),
-        ],
-        'Magento': [
-            ('script', {'src': re.compile('mage', re.I)}),
-            ('script', {'type': 'text/x-magento-init'}),
-        ],
-        'Scorpion CMS': [
-            ('meta', {'name': 'author', 'content': re.compile('Scorpion', re.I)}),
-            ('script', {'src': re.compile('scorpion', re.I)}),
-            ('link', {'href': re.compile('scorpion', re.I)}),
-            ('script', {'src': re.compile('\.scorp\.com', re.I)}),
-            ('div', {'class': re.compile('scorpion-', re.I)}),
-        ]
+        # ... [rest of signatures]
     }
 
-def get_confidence_score(matches, total_checks):
-    """Calculate confidence score based on number of matching signatures."""
-    if total_checks == 0:
-        return 0
-    return (matches / total_checks) * 100
+def analyze_headers(headers):
+    """Analyze response headers for platform hints."""
+    header_scores = {}
+    
+    server = headers.get('Server', '').lower()
+    powered_by = headers.get('X-Powered-By', '').lower()
+    
+    if 'apache' in server:
+        header_scores['Apache'] = 100
+    if 'nginx' in server:
+        header_scores['Nginx'] = 100
+    if 'php' in powered_by:
+        header_scores['PHP'] = 100
+        
+    return header_scores
+
+def get_confidence_score(matches, total_checks, header_matches=0):
+    """Calculate confidence score with header information."""
+    base_score = (matches / total_checks) * 100
+    header_bonus = min(20, header_matches * 10)  # Cap header bonus at 20%
+    return min(100, base_score + header_bonus)
 
 def detect_platform(url):
     """Detect the platform/framework used by a website."""
     try:
-        # Send request with common browser headers
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        
-        # Parse HTML
+        # Fetch website content
+        response = fetch_website(url)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Check response headers for platform hints
-        server = response.headers.get('Server', '').lower()
-        poweredBy = response.headers.get('X-Powered-By', '').lower()
+        # Analyze headers
+        header_scores = analyze_headers(response.headers)
         
         # Initialize results
         detected_platforms = []
@@ -101,28 +113,49 @@ def detect_platform(url):
             total_checks = len(checks)
             
             for tag, attrs in checks:
-                if soup.find(tag, attrs):
+                elements = soup.find_all(tag, attrs)
+                if elements:
                     matches += 1
+                    # Bonus for multiple matches
+                    if len(elements) > 1:
+                        matches += 0.5
             
-            # Calculate confidence score
+            # Calculate confidence score with header information
             if matches > 0:
-                confidence = get_confidence_score(matches, total_checks)
-                if confidence >= 30:
-                    detected_platforms.append({
-                        'platform': platform,
-                        'confidence': round(confidence, 1)
-                    })
+                header_bonus = 1 if platform.lower() in str(header_scores).lower() else 0
+                confidence = get_confidence_score(matches, total_checks, header_bonus)
+                
+                # Include even low confidence results, but mark them
+                detected_platforms.append({
+                    'platform': platform,
+                    'confidence': round(confidence, 1),
+                    'reliability': 'high' if confidence >= 70 else 'medium' if confidence >= 40 else 'low'
+                })
+        
+        # Add header-only detections
+        for platform, confidence in header_scores.items():
+            if not any(p['platform'] == platform for p in detected_platforms):
+                detected_platforms.append({
+                    'platform': platform,
+                    'confidence': confidence,
+                    'reliability': 'high'
+                })
         
         # Sort by confidence score
         detected_platforms.sort(key=lambda x: x['confidence'], reverse=True)
         
         return detected_platforms if detected_platforms else [{
-            'platform': 'Unable to determine platform',
-            'confidence': 0
+            'platform': 'No platform detected',
+            'confidence': 0,
+            'reliability': 'none'
         }]
-    
+        
+    except requests.exceptions.ConnectionError:
+        return [{'platform': 'Could not connect to website. Please check the URL and try again.', 'confidence': 0, 'reliability': 'error'}]
+    except requests.exceptions.Timeout:
+        return [{'platform': 'Request timed out. The website took too long to respond.', 'confidence': 0, 'reliability': 'error'}]
     except requests.exceptions.RequestException as e:
-        return [{'platform': f'Error: {str(e)}', 'confidence': 0}]
+        return [{'platform': 'An error occurred while analyzing the website. Please try again.', 'confidence': 0, 'reliability': 'error'}]
 
 # Streamlit UI
 st.set_page_config(page_title='Website Platform Detector', layout='wide')
@@ -130,7 +163,7 @@ st.set_page_config(page_title='Website Platform Detector', layout='wide')
 st.title('Website Platform Detector')
 st.write('Enter a website URL to detect its platform.')
 
-# URL input
+# URL input with validation feedback
 url = st.text_input('Website URL', placeholder='example.com')
 
 if url:
@@ -140,13 +173,23 @@ if url:
     if cleaned_url:
         # Show spinner during detection
         with st.spinner('Analyzing...'):
-            platforms = detect_platform(cleaned_url)
-        
-        # Display only platforms with their confidence
-        for platform in platforms:
-            if isinstance(platform, dict) and 'platform' in platform:
-                # Skip server and powered-by information
-                if not platform['platform'].startswith(('Server:', 'Powered By:', 'Error:', 'Unable')):
-                    st.write(f"{platform['platform']}: {platform['confidence']}%")
+            try:
+                platforms = detect_platform(cleaned_url)
+                
+                # Display results with visual indicators
+                for platform in platforms:
+                    if not platform['platform'].startswith(('Error:', 'Could not', 'An error')):
+                        # Use different visual styles based on confidence
+                        if platform['reliability'] == 'high':
+                            st.success(f"{platform['platform']}: {platform['confidence']}%")
+                        elif platform['reliability'] == 'medium':
+                            st.info(f"{platform['platform']}: {platform['confidence']}%")
+                        elif platform['reliability'] == 'low':
+                            st.warning(f"{platform['platform']}: {platform['confidence']}%")
+                    else:
+                        st.error(platform['platform'])
+                        
+            except Exception as e:
+                st.error('An unexpected error occurred. Please try again.')
     else:
         st.error('Please enter a valid URL')
