@@ -53,6 +53,66 @@ def get_platform_signatures():
             ('meta', {'name': 'generator', 'content': re.compile('WordPress', re.I)}),
             ('link', {'rel': 'pingback'}),
             ('script', {'src': re.compile('wp-includes|wp-content', re.I)}),
+            ('link', {'href': re.compile('/wp-content/', re.I)}),
+        ],
+        'Magento': [
+            ('script', {'src': re.compile('mage', re.I)}),
+            ('script', {'type': 'text/x-magento-init'}),
+            ('link', {'href': re.compile('frontend/Magento/', re.I)}),
+        ],
+        'OpenCart': [
+            ('script', {'src': re.compile('catalog/view/javascript', re.I)}),
+            ('link', {'href': re.compile('catalog/view/theme', re.I)}),
+        ],
+        'PrestaShop': [
+            ('meta', {'name': 'generator', 'content': re.compile('PrestaShop', re.I)}),
+            ('script', {'src': re.compile('prestashop', re.I)}),
+            ('link', {'href': re.compile('themes/[^/]+/assets', re.I)}),
+        ],
+        'BigCommerce': [
+            ('script', {'src': re.compile('bigcommerce.com', re.I)}),
+            ('link', {'href': re.compile('cdn11.bigcommerce.com', re.I)}),
+        ],
+        'WooCommerce': [
+            ('link', {'href': re.compile('wp-content/plugins/woocommerce', re.I)}),
+            ('script', {'src': re.compile('woocommerce', re.I)}),
+            ('div', {'class': re.compile('woocommerce', re.I)}),
+        ],
+        'Craft CMS': [
+            ('meta', {'name': 'generator', 'content': re.compile('Craft CMS', re.I)}),
+            ('script', {'src': re.compile('craftcms', re.I)}),
+        ],
+        'ExpressionEngine': [
+            ('meta', {'name': 'generator', 'content': re.compile('ExpressionEngine', re.I)}),
+            ('script', {'src': re.compile('expressionengine', re.I)}),
+        ],
+        'Umbraco': [
+            ('meta', {'name': 'generator', 'content': re.compile('umbraco', re.I)}),
+            ('script', {'src': re.compile('umbraco', re.I)}),
+        ],
+        'Kentico': [
+            ('meta', {'name': 'generator', 'content': re.compile('Kentico', re.I)}),
+            ('link', {'href': re.compile('kentico', re.I)}),
+        ],
+        'Sitecore': [
+            ('meta', {'name': 'generator', 'content': re.compile('Sitecore', re.I)}),
+            ('script', {'src': re.compile('sitecore', re.I)}),
+        ],
+        'Adobe Experience Manager': [
+            ('meta', {'name': 'generator', 'content': re.compile('Adobe Experience Manager', re.I)}),
+            ('div', {'class': re.compile('aem-Grid', re.I)}),
+        ],
+        'HubSpot CMS': [
+            ('meta', {'name': 'generator', 'content': re.compile('HubSpot', re.I)}),
+            ('script', {'src': re.compile('hubspot', re.I)}),
+        ],
+        'Scorpion CMS': [
+            ('meta', {'name': 'author', 'content': re.compile('Scorpion', re.I)}),
+            ('script', {'src': re.compile('scorpion', re.I)}),
+            ('link', {'href': re.compile('scorpion', re.I)}),
+            ('script', {'src': re.compile('\.scorp\.com', re.I)}),
+            ('div', {'class': re.compile('scorpion-', re.I)}),
+            ('img', {'src': re.compile('\.scorp\.com', re.I)}),
         ],
         'Shopify': [
             ('meta', {'name': 'shopify-checkout-api-token'}),
