@@ -335,11 +335,11 @@ def detect_platform(url):
     except requests.exceptions.RequestException as e:
         return [f'Error: {str(e)}']
 
-# Streamlit UI
+# Streamlit UI with enhanced visualization
 st.set_page_config(page_title='Website Platform Detector', layout='wide')
 
 st.title('Website Platform Detector')
-st.write('Enter a website URL to detect its platform.')
+st.write('Enter a website URL to detect what platform or framework it\'s built with.')
 
 # URL input
 url = st.text_input('Website URL', placeholder='example.com')
@@ -349,18 +349,58 @@ if url:
     cleaned_url = clean_url(url)
     
     if cleaned_url:
+        st.write(f'Analyzing: {cleaned_url}')
+        
         # Show spinner during detection
-        with st.spinner('Analyzing...'):
+        with st.spinner('Detecting platform...'):
             platforms = detect_platform(cleaned_url)
         
-        # Display only platforms with their confidence
-        for platform in platforms:
-            if isinstance(platform, dict) and 'platform' in platform:
-                # Skip server and powered-by information
-                if not platform['platform'].startswith(('Server:', 'Powered By:', 'Error:', 'Unable')):
-                    st.write(f"{platform['platform']}: {platform['confidence']}%")
+        # Display results with confidence scores
+        st.subheader('Detected Platforms/Technologies:')
+        
+        # Create three columns for different confidence levels
+        high_conf, med_conf, low_conf = st.columns(3)
+        
+        with high_conf:
+            st.markdown("### High Confidence (70-100%)")
+            for platform in platforms:
+                if platform['confidence'] >= 70:
+                    st.success(f"{platform['platform']}: {platform['confidence']}%")
+                    st.caption(f"Matched {platform['matches']} of {platform['total_checks']} signatures")
+        
+        with med_conf:
+            st.markdown("### Medium Confidence (40-69%)")
+            for platform in platforms:
+                if 40 <= platform['confidence'] < 70:
+                    st.warning(f"{platform['platform']}: {platform['confidence']}%")
+                    st.caption(f"Matched {platform['matches']} of {platform['total_checks']} signatures")
+        
+        with low_conf:
+            st.markdown("### Low Confidence (< 40%)")
+            for platform in platforms:
+                if platform['confidence'] < 40:
+                    st.error(f"{platform['platform']}: {platform['confidence']}%")
+                    st.caption(f"Matched {platform['matches']} of {platform['total_checks']} signatures")
+            
+        st.info("""
+        Note: Detection is based on signature matching and may not be 100% accurate. 
+        - High confidence results match multiple platform signatures
+        - Medium confidence results match some but not all signatures
+        - Low confidence results match only a few signatures
+        """)
     else:
         st.error('Please enter a valid URL')
+
+# Add footer with information
+st.markdown('---')
+st.markdown("""
+This tool identifies web platforms by analyzing:
+- HTML structure and meta tags
+- JavaScript and CSS resources
+- Server headers and technologies
+- Platform-specific signatures
+- Framework patterns
+""")
 
 
 # Add footer with information
