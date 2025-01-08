@@ -227,93 +227,34 @@ def get_platform_signatures():
         ]
     }
 
-def get_confidence_score(matches, total_checks):
-    """Calculate confidence score based on number of matching signatures."""
-    if total_checks == 0:
-        return 0
-    return (matches / total_checks) * 100
-
 def detect_platform(url):
-    """Detect the platform/framework used by a website with confidence scores."""
+    """Detect the platform/framework used by a website."""
     try:
         # Send request with common browser headers
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+        response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         
         # Parse HTML
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Check response headers and cookies for platform hints
+        # Check response headers for platform hints
         server = response.headers.get('Server', '').lower()
         poweredBy = response.headers.get('X-Powered-By', '').lower()
-        cookies = response.cookies
         
-        # Initialize results with confidence scores
+        # Initialize results
         detected_platforms = []
         
         # Check signatures for each platform
         signatures = get_platform_signatures()
         for platform, checks in signatures.items():
-            matches = 0
-            total_checks = len(checks)
-            
             for tag, attrs in checks:
                 if soup.find(tag, attrs):
-                    matches += 1
-            
-            # Calculate confidence score
-            if matches > 0:
-                confidence = get_confidence_score(matches, total_checks)
-                if confidence >= 30:  # Only include if confidence is at least 30%
-                    detected_platforms.append({
-                        'platform': platform,
-                        'confidence': round(confidence, 1),
-                        'matches': matches,
-                        'total_checks': total_checks
-                    })
-        
-        # Sort by confidence score
-        detected_platforms.sort(key=lambda x: x['confidence'], reverse=True)
-        
-        # Additional technology checks
-        if server:
-            detected_platforms.append({
-                'platform': f'Server: {server}',
-                'confidence': 100,
-                'matches': 1,
-                'total_checks': 1
-            })
-        
-        if poweredBy:
-            detected_platforms.append({
-                'platform': f'Powered By: {poweredBy}',
-                'confidence': 100,
-                'matches': 1,
-                'total_checks': 1
-            })
-            
-        return detected_platforms if detected_platforms else [{
-            'platform': 'Unable to determine platform',
-            'confidence': 0,
-            'matches': 0,
-            'total_checks': 1
-        }]
-    
-    except requests.exceptions.RequestException as e:
-        return [{
-            'platform': f'Error: {str(e)}',
-            'confidence': 0,
-            'matches': 0,
-            'total_checks': 1
-        }]
+                    if platform not in detected_platforms:
+                        detected_platforms.append(platform)
+                        break
         
         # Check for custom-built indicators if no major platforms detected
         if not detected_platforms or (len(detected_platforms) == 1 and detected_platforms[0] in ['PHP', 'Apache', 'Nginx']):
@@ -335,7 +276,7 @@ def detect_platform(url):
     except requests.exceptions.RequestException as e:
         return [f'Error: {str(e)}']
 
-# Streamlit UI with enhanced visualization
+# Streamlit UI
 st.set_page_config(page_title='Website Platform Detector', layout='wide')
 
 st.title('Website Platform Detector')
@@ -355,53 +296,14 @@ if url:
         with st.spinner('Detecting platform...'):
             platforms = detect_platform(cleaned_url)
         
-        # Display results with confidence scores
+        # Display results
         st.subheader('Detected Platforms/Technologies:')
-        
-        # Create three columns for different confidence levels
-        high_conf, med_conf, low_conf = st.columns(3)
-        
-        with high_conf:
-            st.markdown("### High Confidence (70-100%)")
-            for platform in platforms:
-                if platform['confidence'] >= 70:
-                    st.success(f"{platform['platform']}: {platform['confidence']}%")
-                    st.caption(f"Matched {platform['matches']} of {platform['total_checks']} signatures")
-        
-        with med_conf:
-            st.markdown("### Medium Confidence (40-69%)")
-            for platform in platforms:
-                if 40 <= platform['confidence'] < 70:
-                    st.warning(f"{platform['platform']}: {platform['confidence']}%")
-                    st.caption(f"Matched {platform['matches']} of {platform['total_checks']} signatures")
-        
-        with low_conf:
-            st.markdown("### Low Confidence (< 40%)")
-            for platform in platforms:
-                if platform['confidence'] < 40:
-                    st.error(f"{platform['platform']}: {platform['confidence']}%")
-                    st.caption(f"Matched {platform['matches']} of {platform['total_checks']} signatures")
+        for platform in platforms:
+            st.write(f'- {platform}')
             
-        st.info("""
-        Note: Detection is based on signature matching and may not be 100% accurate. 
-        - High confidence results match multiple platform signatures
-        - Medium confidence results match some but not all signatures
-        - Low confidence results match only a few signatures
-        """)
+        st.info('Note: Detection is based on common signatures and may not be 100% accurate.')
     else:
         st.error('Please enter a valid URL')
-
-# Add footer with information
-st.markdown('---')
-st.markdown("""
-This tool identifies web platforms by analyzing:
-- HTML structure and meta tags
-- JavaScript and CSS resources
-- Server headers and technologies
-- Platform-specific signatures
-- Framework patterns
-""")
-
 
 # Add footer with information
 st.markdown('---')
