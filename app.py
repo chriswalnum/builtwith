@@ -368,10 +368,6 @@ def detect_platform(url):
         # Initialize results
         detected_platforms = []
         
-        # Validate content
-        if not soup.find():  # Check if parsed content is empty
-            return [{'platform': 'Error: No content found', 'confidence': 0}]
-            
         try:
             # Get additional verification signals
             additional_signals = get_additional_checks(soup, url, response.headers)
@@ -383,7 +379,14 @@ def detect_platform(url):
                     matches = 0
                     total_checks = len(checks)
                     
-                    # Platform-specific detection logic here...
+                    # Check base signatures
+                    for tag, attrs in checks:
+                        elements = soup.find_all(tag, attrs)
+                        if elements:
+                            matches += 1
+                            # Add bonus for multiple matches
+                            if len(elements) > 1:
+                                matches += 0.5
                     
                     # Calculate confidence
                     if matches > 0:
@@ -394,8 +397,6 @@ def detect_platform(url):
                                 'confidence': round(confidence, 1)
                             })
                 except Exception as e:
-                    # Log error but continue checking other platforms
-                    print(f"Error checking {platform}: {str(e)}")
                     continue
             
             # Sort by confidence
@@ -406,8 +407,11 @@ def detect_platform(url):
                 'confidence': 0
             }]
             
+        except Exception as e:
+            return [{'platform': f'Error: Unexpected error occurred', 'confidence': 0}]
+            
     except Exception as e:
-        return [{'platform': f'Error: Unexpected error occurred - {str(e)}', 'confidence': 0}]
+        return [{'platform': 'Error: Could not process request', 'confidence': 0}]
         
         # Check response headers and cookies for platform hints
         server = response.headers.get('Server', '').lower()
