@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from beautifulsoup4 import BeautifulSoup
+from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import re
 
