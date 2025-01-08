@@ -5,86 +5,18 @@ from urllib.parse import urlparse
 import re
 
 def clean_url(url):
-    """Normalize and validate URL format."""
+    """Normalize URL format."""
     if not url:
         return None
     
-    try:
-        # Remove leading/trailing whitespace
-        url = url.strip()
-        
-        # Add https if no protocol specified
-        if not url.startswith(('http://', 'https://')):
-            url = 'https://' + url
-        
-        # Remove trailing slashes
-        url = url.rstrip('/')
-        
-        # Validate URL format
-        parsed = urlparse(url)
-        if not all([parsed.scheme, parsed.netloc]):
-            return None
-            
-        # Check for valid domain structure
-        if '.' not in parsed.netloc or len(parsed.netloc.split('.')[-1]) < 2:
-            return None
-            
-        return url
-        
-    except Exception:
-        return None
-
-def safe_request(url, timeout=10, max_retries=2):
-    """Make HTTP request with retries and error handling."""
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-    }
+    # Add https if no protocol specified
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
     
-    session = requests.Session()
+    # Remove trailing slashes
+    url = url.rstrip('/')
     
-    for attempt in range(max_retries):
-        try:
-            response = session.get(
-                url,
-                headers=headers,
-                timeout=timeout,
-                allow_redirects=True,
-                verify=True  # SSL verification
-            )
-            
-            # Check if we got a valid HTML response
-            content_type = response.headers.get('content-type', '').lower()
-            if 'text/html' not in content_type:
-                raise ValueError(f"Invalid content type: {content_type}")
-                
-            response.raise_for_status()
-            return response
-            
-        except requests.exceptions.SSLError:
-            # Try once more without SSL verification
-            if attempt == 0:
-                response = session.get(
-                    url,
-                    headers=headers,
-                    timeout=timeout,
-                    allow_redirects=True,
-                    verify=False
-                )
-                response.raise_for_status()
-                return response
-            raise
-            
-        except (requests.exceptions.ConnectionError, 
-                requests.exceptions.Timeout) as e:
-            if attempt == max_retries - 1:
-                raise
-            time.sleep(1)  # Wait before retry
-            
-    return None
+    return url
 
 def get_custom_site_indicators(soup, headers):
     """Analyze if the site might be custom built."""
@@ -113,39 +45,6 @@ def get_custom_site_indicators(soup, headers):
         indicators.append('Custom asset structure detected')
     
     return indicators
-
-def get_additional_checks(soup, url, headers):
-    """Perform deeper analysis of the page content."""
-    additional_signals = {}
-    
-    # Check for admin paths
-    admin_paths = ['/wp-admin', '/administrator', '/admin', '/backend']
-    for path in admin_paths:
-        try:
-            admin_url = urljoin(url, path)
-            response = requests.head(admin_url, timeout=2)
-            if response.status_code == 200 or response.status_code == 302:
-                additional_signals[f'admin_path_{path}'] = True
-        except:
-            pass
-
-    # Check inline scripts for platform-specific code
-    scripts = soup.find_all('script')
-    script_content = ' '.join([s.string for s in scripts if s.string])
-    
-    # Common platform-specific JavaScript objects
-    js_objects = {
-        'WordPress': ['wp.', 'wpApiSettings', 'woocommerce'],
-        'Shopify': ['Shopify.', 'ShopifyAnalytics'],
-        'Drupal': ['Drupal.', 'drupalSettings'],
-        'Magento': ['Mage.', 'magento'],
-    }
-    
-    for platform, objects in js_objects.items():
-        if any(obj in script_content for obj in objects):
-            additional_signals[f'{platform}_js'] = True
-    
-    return additional_signals
 
 def get_platform_signatures():
     """Return dictionary of platform signatures to look for."""
@@ -335,83 +234,22 @@ def get_confidence_score(matches, total_checks):
     return (matches / total_checks) * 100
 
 def detect_platform(url):
-    """Detect the platform/framework used by a website with error handling."""
+    """Detect the platform/framework used by a website with confidence scores."""
     try:
-        # Validate URL
-        if not url:
-            return [{'platform': 'Error: No URL provided', 'confidence': 0}]
-            
-        # Make request with enhanced error handling
-        try:
-            response = safe_request(url)
-            if not response:
-                return [{'platform': 'Error: Could not connect to website', 'confidence': 0}]
-        except requests.exceptions.SSLError:
-            return [{'platform': 'Error: SSL Certificate verification failed', 'confidence': 0}]
-        except requests.exceptions.ConnectionError:
-            return [{'platform': 'Error: Could not connect to website', 'confidence': 0}]
-        except requests.exceptions.Timeout:
-            return [{'platform': 'Error: Request timed out', 'confidence': 0}]
-        except requests.exceptions.TooManyRedirects:
-            return [{'platform': 'Error: Too many redirects', 'confidence': 0}]
-        except requests.exceptions.RequestException as e:
-            return [{'platform': f'Error: {str(e)}', 'confidence': 0}]
-        except ValueError as e:
-            return [{'platform': f'Error: {str(e)}', 'confidence': 0}]
-            
-        # Parse HTML with error handling
-        try:
-            soup = BeautifulSoup(response.text, 'html.parser')
-        except Exception as e:
-            return [{'platform': 'Error: Could not parse website content', 'confidence': 0}]
-            
-        # Initialize results
-        detected_platforms = []
+        # Send request with common browser headers
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        response = requests.get(url, headers=headers, timeout=10, allow_redirects=True)
+        response.raise_for_status()
         
-        try:
-            # Get additional verification signals
-            additional_signals = get_additional_checks(soup, url, response.headers)
-            
-            # Perform platform detection
-            signatures = get_platform_signatures()
-            for platform, checks in signatures.items():
-                try:
-                    matches = 0
-                    total_checks = len(checks)
-                    
-                    # Check base signatures
-                    for tag, attrs in checks:
-                        elements = soup.find_all(tag, attrs)
-                        if elements:
-                            matches += 1
-                            # Add bonus for multiple matches
-                            if len(elements) > 1:
-                                matches += 0.5
-                    
-                    # Calculate confidence
-                    if matches > 0:
-                        confidence = get_confidence_score(matches, total_checks)
-                        if confidence >= 30:
-                            detected_platforms.append({
-                                'platform': platform,
-                                'confidence': round(confidence, 1)
-                            })
-                except Exception as e:
-                    continue
-            
-            # Sort by confidence
-            detected_platforms.sort(key=lambda x: x['confidence'], reverse=True)
-            
-            return detected_platforms if detected_platforms else [{
-                'platform': 'No platform detected',
-                'confidence': 0
-            }]
-            
-        except Exception as e:
-            return [{'platform': f'Error: Unexpected error occurred', 'confidence': 0}]
-            
-    except Exception as e:
-        return [{'platform': 'Error: Could not process request', 'confidence': 0}]
+        # Parse HTML
+        soup = BeautifulSoup(response.text, 'html.parser')
         
         # Check response headers and cookies for platform hints
         server = response.headers.get('Server', '').lower()
@@ -421,58 +259,15 @@ def detect_platform(url):
         # Initialize results with confidence scores
         detected_platforms = []
         
-        # Get additional verification signals
-        additional_signals = get_additional_checks(soup, url, response.headers)
-        
         # Check signatures for each platform
         signatures = get_platform_signatures()
-        
-        # Check page title and metadata patterns
-        page_title = soup.title.string.lower() if soup.title else ''
-        meta_desc = soup.find('meta', {'name': 'description'})
-        meta_desc = meta_desc['content'].lower() if meta_desc else ''
-        
-        # Check for robots.txt patterns
-        try:
-            robots_url = urljoin(url, '/robots.txt')
-            robots_response = requests.get(robots_url, timeout=2)
-            robots_content = robots_response.text.lower() if robots_response.status_code == 200 else ''
-        except:
-            robots_content = ''
         for platform, checks in signatures.items():
             matches = 0
             total_checks = len(checks)
             
-            # Check base signatures
             for tag, attrs in checks:
-                elements = soup.find_all(tag, attrs)
-                if elements:
+                if soup.find(tag, attrs):
                     matches += 1
-                    # Add bonus for multiple matches
-                    if len(elements) > 1:
-                        matches += 0.5
-            
-            # Check additional signals
-            if f'{platform}_js' in additional_signals:
-                matches += 2  # Strong signal from JavaScript detection
-                
-            # Check URL patterns
-            platform_lower = platform.lower()
-            if platform_lower in url.lower():
-                matches += 1
-                
-            # Check title and meta description
-            if platform_lower in page_title or platform_lower in meta_desc:
-                matches += 1
-                
-            # Check robots.txt
-            if platform_lower in robots_content:
-                matches += 1
-                
-            # Check for admin paths
-            admin_path = f'admin_path_{platform_lower}'
-            if admin_path in additional_signals:
-                matches += 2  # Strong signal from admin path detection
             
             # Calculate confidence score
             if matches > 0:
